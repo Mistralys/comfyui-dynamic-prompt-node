@@ -135,6 +135,12 @@ def _load_package():
     io.String = type("String", (), {"Input": Input, "Output": Output})
     io.Int = type("Int", (), {"Input": Input})
 
+    class TemplatePrefix:
+        def __init__(self, input, prefix, min=1, max=10):
+            self.input, self.prefix, self.min, self.max = input, prefix, min, max
+
+    io.Autogrow = type("Autogrow", (), {"Input": Input, "TemplatePrefix": TemplatePrefix})
+
     latest = ModuleType("comfy_api.latest")
     latest.io = io
     latest.ComfyExtension = type("ComfyExtension", (), {})
@@ -161,7 +167,7 @@ class NodeTests(unittest.TestCase):
     def test_schema(self):
         schema = self.node.define_schema()
         self.assertEqual(schema.node_id, "Mistralys_DynamicPromptText")
-        text, seed = schema.inputs
+        text, seed, variables = schema.inputs
         self.assertEqual((text.id, seed.id), ("text", "seed"))
         self.assertTrue(text.kw["multiline"])
         self.assertIs(text.kw["dynamic_prompts"], False)
@@ -172,6 +178,42 @@ class NodeTests(unittest.TestCase):
     def test_execute_resolves_text(self):
         result = self.node.execute("{a|b}", 7)
         self.assertEqual(result.args, (resolve("{a|b}", 7),))
+
+    def test_schema_variables_input(self):
+        nodes = sys.modules["dynamic_prompt_pkg.nodes"]
+        variables = self.node.define_schema().inputs[2]
+        self.assertEqual(variables.id, "variables")
+        self.assertTrue(variables.kw["optional"])
+        template = variables.kw["template"]
+        self.assertEqual(template.prefix, "variable_")
+        self.assertEqual((template.min, template.max), (0, 20))
+        self.assertEqual((nodes.INPUT_VARIABLE_PREFIX, nodes.MAX_INPUT_VARIABLES), ("variable_", 20))
+        self.assertEqual(template.input.id, "variable")
+
+    def test_schema_texts_mention_variables(self):
+        schema = self.node.define_schema()
+        for text in (schema.description, schema.inputs[0].kw["tooltip"]):
+            self.assertIn("<? $name = ... ?>", text)
+            self.assertIn("$variable_", text)
+
+    def test_execute_without_variables(self):
+        expected = (resolve("{a|b}", 7),)
+        self.assertEqual(self.node.execute("{a|b}", 7).args, expected)
+        self.assertEqual(self.node.execute("{a|b}", 7, variables={}).args, expected)
+        self.assertEqual(self.node.execute("{a|b}", 7, variables=None).args, expected)
+
+    def test_execute_with_variables(self):
+        result = self.node.execute("x $variable_1 $variable_0", 0, variables={"variable_1": "b"})
+        self.assertEqual(result.args, ("x b ",))
+        self.assertEqual(self.node.execute("a$variable_19", 0).args, ("a",))
+
+    def test_execute_propagates_prompt_error(self):
+        error = sys.modules["dynamic_prompt_pkg.dynamic_prompt"].UndefinedVariableError
+        with self.assertRaises(error) as ctx:
+            self.node.execute("$missing", 0)
+        self.assertTrue(str(ctx.exception).startswith("Line 1, column 1:"))
+        with self.assertRaises(error):
+            self.node.execute("$variable_20", 0)
 
     def test_extension_lists_node(self):
         ext = self.pkg.DynamicPromptExtension()

@@ -5,6 +5,9 @@ from comfy_api.latest import ComfyExtension, io
 
 from .nodes import DynamicPromptTextNode
 
+# Serves js/, whose docs/ subfolder holds the in-app node help page (js/docs/<node_id>.md).
+WEB_DIRECTORY = "./js"
+
 
 class DynamicPromptExtension(ComfyExtension):
     @override

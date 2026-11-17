@@ -2,6 +2,7 @@
 
 Supports nested groups, backslash escapes (\\{ \\} \\|) and // and /* */ comments.
 Pure Python with no ComfyUI imports, so it can be tested on its own.
+FROZEN COPY of the v1.0.0 resolver, used as a parity oracle in tests. Never edit this file.
 """
 import random
 import re
